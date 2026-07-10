@@ -26,6 +26,8 @@ from net_comd_comp.ollama_client import is_ollama_available, model_installed
 from net_comd_comp.ollama_client import OllamaChat
 from net_comd_comp.ollama_lifecycle import ensure_ollama_server
 
+APP_BUILD = "2026-07-10-ingest-fix"
+
 st.set_page_config(
     page_title="Net Command Comparator",
     page_icon="🔀",
@@ -84,6 +86,7 @@ def main() -> None:
     )
 
     with st.sidebar:
+        st.caption(f"Build: `{APP_BUILD}`")
         st.subheader("Server")
         public_url = server.get("public_url", "http://localhost:8503")
         lan_ip = _local_ip()

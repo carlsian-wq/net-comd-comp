@@ -108,7 +108,9 @@ def ingest_all_sources(
     on_progress: ProgressFn = None,
     *,
     replace: bool = False,
+    **_ignored: object,
 ) -> Dict[str, int]:
+    """Ingest all configured sources. Pass replace=True to clear each vendor first."""
     cfg = cfg or load_config()
     return {
         "cisco": ingest_vendor(index, "cisco", cfg, on_progress, replace=replace),
