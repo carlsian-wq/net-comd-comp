@@ -11,6 +11,8 @@ data/semantic_*.npz
 data/semantic_*.json
 data/sources/*.pdf
 data/sources/cache/
+data/launch.log
+data/streamlit.pid
 .streamlit/secrets.toml
 *.log
 .DS_Store
