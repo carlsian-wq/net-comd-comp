@@ -11,7 +11,9 @@ from net_comd_comp.embeddings.ollama_embed import OllamaEmbeddings
 from net_comd_comp.embeddings.vector_index import VectorIndex
 
 # Streamlit caches imported modules; reload project code so fixes apply without restart.
+import net_comd_comp.agent.cli_skeleton as _agent_cli_skeleton
 import net_comd_comp.agent.keywords as _agent_keywords
+import net_comd_comp.agent.mappings as _agent_mappings
 import net_comd_comp.agent.compare as _agent_compare
 import net_comd_comp.agent.search as _agent_search
 import net_comd_comp.index.store as _index_store
@@ -19,7 +21,9 @@ import net_comd_comp.ingest.quality as _ingest_quality
 import net_comd_comp.ingest.url_loader as _ingest_url_loader
 import net_comd_comp.ingest.pipeline as _ingest_pipeline
 
+importlib.reload(_agent_cli_skeleton)
 importlib.reload(_agent_keywords)
+importlib.reload(_agent_mappings)
 importlib.reload(_index_store)
 importlib.reload(_ingest_quality)
 importlib.reload(_ingest_url_loader)
@@ -34,7 +38,7 @@ from net_comd_comp.ollama_client import is_ollama_available, model_installed
 from net_comd_comp.ollama_client import OllamaChat
 from net_comd_comp.ollama_lifecycle import ensure_ollama_server
 
-APP_BUILD = "2026-07-10-phrase-search-fix"
+APP_BUILD = "2026-07-10-cli-skeleton-search"
 
 st.set_page_config(
     page_title="Net Command Comparator",
@@ -43,8 +47,8 @@ st.set_page_config(
 )
 
 
-@st.cache_resource
 def get_config():
+    """Always read config.yaml fresh so command_mappings edits apply without restart."""
     return load_config()
 
 
@@ -74,6 +78,11 @@ def _paths(cfg: dict) -> tuple[Path, Path]:
 
 
 def main() -> None:
+    if st.session_state.get("app_build") != APP_BUILD:
+        st.session_state.pop("last_compare", None)
+        st.session_state.pop("last_compare_hits", None)
+        st.session_state["app_build"] = APP_BUILD
+
     cfg = get_config()
     _init_state(cfg)
     db_path, data_dir = _paths(cfg)
@@ -95,6 +104,8 @@ def main() -> None:
 
     with st.sidebar:
         st.caption(f"Build: `{APP_BUILD}`")
+        mapping_count = len(cfg.get("command_mappings") or [])
+        st.caption(f"Curated mappings loaded: **{mapping_count}**")
         st.subheader("Server")
         public_url = server.get("public_url", "http://localhost:8503")
         lan_ip = _local_ip()
@@ -234,6 +245,7 @@ def main() -> None:
                     embedder,
                     top_k=search_cfg.get("top_k", 10),
                     min_similarity=search_cfg.get("min_similarity", 0.32),
+                    cfg=cfg,
                 )
                 chat = OllamaChat(
                     model=chat_model,
@@ -246,16 +258,23 @@ def main() -> None:
                     chat,
                     index,
                     platform_context=platform_context(cfg),
+                    cfg=cfg,
                 )
                 with st.spinner("Searching documentation and comparing syntax…"):
                     result = comparator.compare(query.strip(), direction=direction)
                     hits = searcher.search_both(query.strip())
                 st.session_state["last_compare"] = result
                 st.session_state["last_compare_hits"] = hits
+                st.session_state["app_build"] = APP_BUILD
 
         result = st.session_state.get("last_compare")
         if result and query.strip() and result.query.strip() == query.strip():
-            if result.confidence == "none":
+            if result.confidence == "curated":
+                st.success(
+                    f"Curated mapping ({result.retrieval_note}) — "
+                    "configured translation, not inferred from docs alone."
+                )
+            elif result.confidence == "none":
                 st.warning("Low documentation match — result may be incomplete. See caveats below.")
             elif result.confidence == "low":
                 st.info(f"Retrieval confidence: **{result.confidence}** ({result.retrieval_note})")

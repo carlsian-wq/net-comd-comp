@@ -2,6 +2,12 @@ from __future__ import annotations
 
 import re
 
+from net_comd_comp.agent.cli_skeleton import (
+    cli_skeleton,
+    skeleton_search_phrases,
+    structural_tokens,
+)
+
 STOP_WORDS = frozenset(
     {
         "the",
@@ -26,7 +32,7 @@ STOP_WORDS = frozenset(
 
 
 def query_tokens(query: str) -> list[str]:
-    tokens = re.findall(r"[a-z0-9-]+", query.lower())
+    tokens = structural_tokens(query)
     return [t for t in tokens if len(t) >= 2 and t not in STOP_WORDS]
 
 
@@ -54,17 +60,12 @@ def related_phrases(query: str, *, target_vendor: str | None = None) -> list[str
     q = re.sub(r"\s+", " ", query.strip().lower())
     related: list[str] = []
 
-    if "redirect" in q:
-        related.extend(
-            [
-                "no ip icmp redirect",
-                "ip icmp redirect",
-                "icmp redirect",
-                "icmp redirects",
-            ]
-        )
-        if q.startswith("no "):
-            related.append("no ip redirects")
+    # Cisco "redirects" hardening only — do not broaden "no ip icmp redirect" lookups.
+    if "icmp redirect" not in q and re.search(r"\bredirects?\b", q):
+        related.extend(["no ip unreachables", "ip unreachables"])
+
+    if "unreachable" in q:
+        related.extend(["no ip unreachables", "ip unreachables", "icmp unreachable"])
 
     if "portfast" in q or "bpduguard" in q:
         related.extend(
@@ -76,12 +77,6 @@ def related_phrases(query: str, *, target_vendor: str | None = None) -> list[str
             ]
         )
 
-    if target_vendor == "arista" and q.startswith("no ip "):
-        # Cisco "no ip X" often maps to Arista "no ip icmp X" or "no ip X"
-        tail = q[6:].strip()
-        if tail and "icmp" not in tail:
-            related.append(f"no ip icmp {tail}")
-
     return list(dict.fromkeys(p for p in related if p and p != q))
 
 
@@ -90,4 +85,8 @@ def search_phrases(query: str, *, target_vendor: str | None = None) -> list[str]
     for base in phrase_variants(query):
         phrases.append(base)
         phrases.extend(related_phrases(base, target_vendor=target_vendor))
+    phrases.extend(skeleton_search_phrases(query))
+    skeleton = cli_skeleton(query)
+    if skeleton:
+        phrases.append(skeleton)
     return list(dict.fromkeys(phrases))

@@ -40,9 +40,24 @@ def _looks_like_cli(line: str) -> bool:
 
 
 def _command_hint(text: str) -> str:
+    best = ""
+    best_score = 0
     for line in text.splitlines():
-        if _looks_like_cli(line):
-            return line.strip()[:240]
+        s = line.strip()
+        if not s:
+            continue
+        lower = s.lower()
+        if not (
+            _looks_like_cli(s)
+            or lower.startswith(("switch(config)", "switch#", "device#"))
+        ):
+            continue
+        score = len(re.findall(r"[a-z]{3,}", lower))
+        if score > best_score:
+            best_score = score
+            best = s
+    if best:
+        return best[:240]
     first = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
     return first[:240]
 

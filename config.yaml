@@ -23,8 +23,22 @@ platforms:
       STP mapping: Cisco "spanning-tree portfast bpduguard default" maps to
       Arista "spanning-tree edge-port bpduguard default" (global) plus
       "spanning-tree portfast" on edge/access ports as needed.
-      ICMP redirects: Cisco "no ip redirects" (interface) maps to Arista
-      global "no ip icmp redirect".
+
+command_mappings:
+  # Curated mappings override LLM when the query matches exactly (edit as needed).
+  - id: no-ip-redirects
+    cisco: no ip redirects
+    arista: no ip unreachables
+    bidirectional: true
+    notes: >
+      Campus L3 interface hardening. Cisco suppresses ICMP redirect messages;
+      Arista equivalent is no ip unreachables on the interface.
+    differences:
+      - "Cisco: no ip redirects (interface). Arista: no ip unreachables (interface)."
+    reject_targets:
+      - no ip icmp redirect
+    caveats:
+      - "Curated mapping — EOS 4.36.1F manual also documents no ip icmp redirect for redirect control."
 
 ollama:
   base_url: http://localhost:11434

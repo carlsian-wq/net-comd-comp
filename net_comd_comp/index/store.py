@@ -6,6 +6,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterable, List, Optional, Tuple
 
+from net_comd_comp.agent.cli_skeleton import (
+    best_line_skeleton,
+    cli_skeleton,
+    retrieval_anchors,
+    structural_tokens,
+    token_subsequence_score,
+    weighted_token_match,
+)
 from net_comd_comp.models import DocChunk
 
 SCHEMA = """
@@ -162,3 +170,61 @@ class CommandIndex:
                 if chunk.id not in ranked or ranked[chunk.id][1] < phrase_score:
                     ranked[chunk.id] = (chunk, phrase_score)
         return sorted(ranked.values(), key=lambda x: x[1], reverse=True)[:limit]
+
+    def search_skeleton(
+        self,
+        query: str,
+        *,
+        vendor: Optional[str] = None,
+        limit: int = 12,
+    ) -> List[tuple[DocChunk, float]]:
+        """Match CLI by structural keywords, ignoring doc placeholders."""
+        tokens = structural_tokens(query)
+        if len(tokens) < 2:
+            return []
+
+        token_set = set(tokens)
+        anchors = retrieval_anchors(tokens, max_anchors=2)
+        sql = "SELECT * FROM chunks WHERE "
+        clauses = ["(lower(text) LIKE ? OR lower(command_hint) LIKE ?)"] * len(anchors)
+        params: list = []
+        for anchor in anchors:
+            needle = "%snmp%" if anchor == "snmp" else f"%{anchor}%"
+            params.extend([needle, needle])
+        if vendor:
+            sql += " AND ".join(clauses) + " AND vendor = ?"
+            params.append(vendor)
+        else:
+            sql += " AND ".join(clauses)
+        sql += " ORDER BY length(text) ASC LIMIT ?"
+        params.append(max(limit * 12, 60))
+
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+
+        query_skeleton = cli_skeleton(query)
+        ranked: list[tuple[DocChunk, float]] = []
+        for row in rows:
+            chunk = self._row_to_chunk(row)
+            line_skeleton = best_line_skeleton(f"{chunk.command_hint}\n{chunk.text}")
+            hay_tokens = structural_tokens(line_skeleton)
+            if not hay_tokens:
+                continue
+            hay_set = set(hay_tokens)
+            overlap = len(token_set & hay_set) / len(token_set)
+            subseq = token_subsequence_score(tokens, hay_tokens)
+            weighted = weighted_token_match(tokens, hay_tokens)
+            match = max(overlap, subseq, weighted)
+            if match < 0.28:
+                continue
+            score = min(0.97, 0.48 + match * 0.48)
+            if query_skeleton and query_skeleton in line_skeleton:
+                score = min(0.99, score + 0.1)
+            if "snmp-server" in line_skeleton:
+                score = min(0.99, score + 0.04)
+            if "user" in tokens and "snmp-server user" in line_skeleton:
+                score = min(0.99, score + 0.06)
+            ranked.append((chunk, score))
+
+        ranked.sort(key=lambda x: x[1], reverse=True)
+        return ranked[:limit]
