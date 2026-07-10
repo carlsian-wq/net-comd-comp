@@ -43,6 +43,7 @@ sources:
   cisco:
     pdfs: []
     urls:
+      # Ingest the PDF first — HTML chapters alone miss many commands (e.g. "no ip redirects").
       - name: Catalyst 9300 IOS XE 26.x Command Reference (PDF)
         url: https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9300/software/release/26-x/command_reference/b_26x_9300_cr.pdf
         type: pdf

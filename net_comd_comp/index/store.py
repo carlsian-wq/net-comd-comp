@@ -133,3 +133,47 @@ class CommandIndex:
             cur = conn.execute("DELETE FROM chunks WHERE vendor = ?", (vendor,))
             conn.commit()
             return cur.rowcount
+
+    def search_keywords(
+        self,
+        query: str,
+        *,
+        vendor: Optional[str] = None,
+        limit: int = 12,
+    ) -> List[DocChunk]:
+        from net_comd_comp.agent.keywords import phrase_variants, query_tokens
+
+        phrases = phrase_variants(query)
+        tokens = query_tokens(query)
+        if not phrases and not tokens:
+            return []
+
+        clauses: List[str] = []
+        params: List[str] = []
+        if vendor:
+            clauses.append("vendor = ?")
+            params.append(vendor)
+
+        text_filters: List[str] = []
+        for phrase in phrases:
+            text_filters.append("lower(text) LIKE ?")
+            params.append(f"%{phrase}%")
+            text_filters.append("lower(command_hint) LIKE ?")
+            params.append(f"%{phrase}%")
+        for token in tokens[:6]:
+            text_filters.append("lower(text) LIKE ?")
+            params.append(f"%{token}%")
+            text_filters.append("lower(command_hint) LIKE ?")
+            params.append(f"%{token}%")
+
+        where = " AND ".join(clauses + [f"({' OR '.join(text_filters)})"])
+        sql = f"""
+            SELECT * FROM chunks
+            WHERE {where}
+            ORDER BY length(text) ASC
+            LIMIT ?
+        """
+        params.append(limit)
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [self._row_to_chunk(r) for r in rows]

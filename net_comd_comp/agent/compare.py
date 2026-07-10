@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import Dict, List
 
+from net_comd_comp.agent.keywords import keyword_overlap_score, query_tokens
 from net_comd_comp.agent.search import SemanticSearcher
+from net_comd_comp.index.store import CommandIndex
 from net_comd_comp.models import CompareResult, SearchHit
 from net_comd_comp.ollama_client import OllamaChat, extract_json
 
@@ -27,12 +29,12 @@ Return ONLY valid JSON:
 Rules:
 - Cisco side: Catalyst 9300, IOS XE 26.x — interface names like GigabitEthernet/TwoGigabitEthernet/TenGigabitEthernet.
 - Arista side: CCS-720XP, EOS 4.36.1F — interface names like Ethernet1, Ethernet1/1.
+- Use ONLY commands and syntax supported by the retrieved excerpts for the target vendor.
+- If target-vendor excerpts are missing or unrelated, set target_command to "" and explain that no equivalent was found in indexed docs.
+- NEVER answer with a command from a different feature area than the user query.
+- NEVER reuse an example from these instructions unless it matches the user query.
 - Prefer exact CLI syntax from the excerpts when available.
-- Map IOS-XE idioms (e.g. switchport trunk allowed vlan) to EOS idioms (switchport trunk allowed vlan on Arista is similar but verify mode defaults).
-- Cisco "spanning-tree portfast bpduguard default" typically maps to Arista globals
-  "spanning-tree edge-port bpduguard default" and portfast/edge-port settings; cite both when relevant.
-- If no exact equivalent exists, give the closest alternative and explain the gap.
-- Note when a feature requires a license or is not available on CCS-720XP or Catalyst 9300.
+- If no exact equivalent exists, give the closest alternative from excerpts and explain the gap.
 - differences and caveats may be empty arrays.
 - Do not invent unsupported commands.
 """
@@ -80,16 +82,32 @@ def _resolve_direction(
     return "cisco", "arista"
 
 
+def _target_overlap_ok(query: str, target_command: str, target_hits: List[SearchHit]) -> bool:
+    if not target_command.strip():
+        return True
+    tokens = query_tokens(query)
+    if keyword_overlap_score(target_command, tokens) >= 0.2:
+        return True
+    if target_hits and keyword_overlap_score(
+        f"{target_hits[0].chunk.command_hint}\n{target_hits[0].chunk.text}",
+        tokens,
+    ) >= 0.25:
+        return True
+    return False
+
+
 class CommandComparator:
     def __init__(
         self,
         searcher: SemanticSearcher,
         chat: OllamaChat,
+        command_index: CommandIndex,
         *,
         platform_context: str = "",
     ):
         self.searcher = searcher
         self.chat = chat
+        self.command_index = command_index
         self.platform_context = platform_context
 
     def compare(
@@ -104,11 +122,61 @@ class CommandComparator:
         source_vendor, target_vendor = _resolve_direction(
             direction, query, cisco_hits, arista_hits
         )
+        target_hits = arista_hits if target_vendor == "arista" else cisco_hits
+        source_hits = cisco_hits if source_vendor == "cisco" else arista_hits
+
+        target_indexed = self.command_index.count(target_vendor) > 0
+        source_conf = self.searcher.retrieval_confidence(query, source_hits)
+        target_conf = self.searcher.retrieval_confidence(query, target_hits)
+
+        if not target_indexed:
+            return CompareResult(
+                query=query,
+                direction=direction,
+                source_vendor=source_vendor,
+                target_vendor=target_vendor,
+                source_command=query,
+                target_command="",
+                explanation=(
+                    f"No {target_vendor.title()} documentation is indexed yet. "
+                    "Run **Ingest sources from config** (include the EOS PDF) and "
+                    "**Build semantic index** before comparing commands."
+                ),
+                differences=[],
+                caveats=[],
+                citations=[],
+                confidence="none",
+                retrieval_note=f"{target_vendor} chunk count is 0 in the index.",
+            )
+
+        if target_conf == "none":
+            return CompareResult(
+                query=query,
+                direction=direction,
+                source_vendor=source_vendor,
+                target_vendor=target_vendor,
+                source_command=query,
+                target_command="",
+                explanation=(
+                    "No relevant documentation excerpt was found for this query on the "
+                    f"{target_vendor.title()} side. The indexed sources may be incomplete — "
+                    "ensure vendor PDFs are ingested, not just HTML index pages."
+                ),
+                differences=[],
+                caveats=[
+                    "Try **Replace existing documentation** + re-ingest to load full PDF command references."
+                ],
+                citations=[h.chunk.source_name for h in target_hits[:3]],
+                confidence="none",
+                retrieval_note="Target-vendor retrieval confidence too low; skipped LLM synthesis.",
+            )
 
         user_prompt = (
             f"User query: {query}\n"
             f"Requested direction: {direction}\n"
-            f"Resolved translation: {source_vendor} -> {target_vendor}\n\n"
+            f"Resolved translation: {source_vendor} -> {target_vendor}\n"
+            f"Source retrieval confidence: {source_conf}\n"
+            f"Target retrieval confidence: {target_conf}\n\n"
             f"{_format_hits(cisco_hits, 'Cisco')}\n\n"
             f"{_format_hits(arista_hits, 'Arista')}\n"
         )
@@ -122,20 +190,35 @@ class CommandComparator:
                 {"role": "user", "content": user_prompt},
             ],
             format_json=True,
-            temperature=0.1,
+            temperature=0.05,
         )
         data = extract_json(raw) or {}
+
+        target_command = data.get("target_command", "")
+        if target_command and not _target_overlap_ok(query, target_command, target_hits):
+            target_command = ""
+            data["explanation"] = (
+                (data.get("explanation") or "")
+                + " The model suggestion was rejected because it did not match the query "
+                "or retrieved documentation."
+            ).strip()
+
+        confidence = target_conf
+        if not target_command:
+            confidence = "none"
 
         return CompareResult(
             query=query,
             direction=direction,
             source_vendor=data.get("source_vendor") or source_vendor,
             target_vendor=data.get("target_vendor") or target_vendor,
-            source_command=data.get("source_command", ""),
-            target_command=data.get("target_command", ""),
+            source_command=data.get("source_command", "") or query,
+            target_command=target_command,
             explanation=data.get("explanation", ""),
             differences=list(data.get("differences") or []),
             caveats=list(data.get("caveats") or []),
             citations=list(data.get("citations") or []),
             raw_response=raw,
+            confidence=confidence,
+            retrieval_note=f"source={source_conf}, target={target_conf}",
         )

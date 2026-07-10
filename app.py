@@ -6,14 +6,14 @@ from pathlib import Path
 
 import streamlit as st
 
-from net_comd_comp.agent.compare import CommandComparator
-from net_comd_comp.agent.search import SemanticSearcher
 from net_comd_comp.config import ROOT, load_config, platform_context, resolve_path
 from net_comd_comp.embeddings.ollama_embed import OllamaEmbeddings
 from net_comd_comp.embeddings.vector_index import VectorIndex
 from net_comd_comp.index.store import CommandIndex
 
 # Streamlit keeps imported submodules in memory; reload so ingest fixes apply without restart.
+import net_comd_comp.agent.compare as _agent_compare
+import net_comd_comp.agent.search as _agent_search
 import net_comd_comp.ingest.quality as _ingest_quality
 import net_comd_comp.ingest.url_loader as _ingest_url_loader
 import net_comd_comp.ingest.pipeline as _ingest_pipeline
@@ -21,12 +21,16 @@ import net_comd_comp.ingest.pipeline as _ingest_pipeline
 importlib.reload(_ingest_quality)
 importlib.reload(_ingest_url_loader)
 importlib.reload(_ingest_pipeline)
+importlib.reload(_agent_search)
+importlib.reload(_agent_compare)
+from net_comd_comp.agent.compare import CommandComparator  # noqa: E402
+from net_comd_comp.agent.search import SemanticSearcher  # noqa: E402
 from net_comd_comp.ingest.pipeline import ingest_all_sources
 from net_comd_comp.ollama_client import is_ollama_available, model_installed
 from net_comd_comp.ollama_client import OllamaChat
 from net_comd_comp.ollama_lifecycle import ensure_ollama_server
 
-APP_BUILD = "2026-07-10-ingest-fix"
+APP_BUILD = "2026-07-10-retrieval-fix"
 
 st.set_page_config(
     page_title="Net Command Comparator",
@@ -120,8 +124,18 @@ def main() -> None:
         st.subheader("Index")
         index = CommandIndex(db_path)
         vector_index = VectorIndex(data_dir, embed_model)
-        st.metric("Document chunks", index.count())
+        cisco_chunks = index.count("cisco")
+        arista_chunks = index.count("arista")
+        st.metric("Cisco chunks", cisco_chunks)
+        st.metric("Arista chunks", arista_chunks)
         st.metric("Embedded chunks", vector_index.count)
+        if arista_chunks == 0:
+            st.error("Arista docs not indexed. Ingest sources (EOS PDF) before comparing.")
+        if cisco_chunks < 2000:
+            st.warning(
+                "Cisco PDF may not be ingested yet (only HTML pages indexed). "
+                "Use **Replace existing documentation** and re-ingest."
+            )
         replace_docs = st.checkbox(
             "Replace existing documentation",
             value=True,
@@ -221,48 +235,59 @@ def main() -> None:
                 comparator = CommandComparator(
                     searcher,
                     chat,
+                    index,
                     platform_context=platform_context(cfg),
                 )
                 with st.spinner("Searching documentation and comparing syntax…"):
                     result = comparator.compare(query.strip(), direction=direction)
+                    hits = searcher.search_both(query.strip())
+                st.session_state["last_compare"] = result
+                st.session_state["last_compare_hits"] = hits
 
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.subheader(f"Source ({result.source_vendor})")
-                    st.code(result.source_command or "(not identified)", language="bash")
-                with col2:
-                    st.subheader(f"Target ({result.target_vendor})")
-                    st.code(result.target_command or "(no equivalent found)", language="bash")
+        result = st.session_state.get("last_compare")
+        if result and query.strip() and result.query.strip() == query.strip():
+            if result.confidence == "none":
+                st.warning("Low documentation match — result may be incomplete. See caveats below.")
+            elif result.confidence == "low":
+                st.info(f"Retrieval confidence: **{result.confidence}** ({result.retrieval_note})")
 
-                st.markdown("### Explanation")
-                st.write(result.explanation or "No explanation returned.")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.subheader(f"Source ({result.source_vendor})")
+                st.code(result.source_command or "(not identified)", language="bash")
+            with col2:
+                st.subheader(f"Target ({result.target_vendor})")
+                st.code(result.target_command or "(no equivalent found)", language="bash")
 
-                if result.differences:
-                    st.markdown("### Syntax / behavior differences")
-                    for item in result.differences:
-                        st.markdown(f"- {item}")
-                if result.caveats:
-                    st.markdown("### Caveats")
-                    for item in result.caveats:
-                        st.markdown(f"- {item}")
-                if result.citations:
-                    st.markdown("### Sources cited")
-                    for item in result.citations:
-                        st.markdown(f"- {item}")
+            st.markdown("### Explanation")
+            st.write(result.explanation or "No explanation returned.")
 
-                with st.expander("Retrieved documentation excerpts"):
-                    both = searcher.search_both(query.strip())
-                    for vendor, hits in both.items():
-                        st.markdown(f"**{vendor.title()}**")
-                        if not hits:
-                            st.caption("No hits.")
-                            continue
-                        for hit in hits[:5]:
-                            c = hit.chunk
-                            st.markdown(
-                                f"- `{c.command_hint[:120]}` — {c.source_name} "
-                                f"(score {hit.score:.3f})"
-                            )
+            if result.differences:
+                st.markdown("### Syntax / behavior differences")
+                for item in result.differences:
+                    st.markdown(f"- {item}")
+            if result.caveats:
+                st.markdown("### Caveats")
+                for item in result.caveats:
+                    st.markdown(f"- {item}")
+            if result.citations:
+                st.markdown("### Sources cited")
+                for item in result.citations:
+                    st.markdown(f"- {item}")
+
+            with st.expander("Retrieved documentation excerpts"):
+                both = st.session_state.get("last_compare_hits") or {}
+                for vendor, vendor_hits in both.items():
+                    st.markdown(f"**{vendor.title()}**")
+                    if not vendor_hits:
+                        st.caption("No hits.")
+                        continue
+                    for hit in vendor_hits[:5]:
+                        c = hit.chunk
+                        st.markdown(
+                            f"- `{c.command_hint[:120]}` — {c.source_name} "
+                            f"(score {hit.score:.3f})"
+                        )
 
     with tab_admin:
         st.markdown("### Curated documentation sources")

@@ -34,3 +34,5 @@ class CompareResult:
     caveats: List[str]
     citations: List[str]
     raw_response: str = ""
+    confidence: str = "low"
+    retrieval_note: str = ""
