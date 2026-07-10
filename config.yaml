@@ -23,6 +23,8 @@ platforms:
       STP mapping: Cisco "spanning-tree portfast bpduguard default" maps to
       Arista "spanning-tree edge-port bpduguard default" (global) plus
       "spanning-tree portfast" on edge/access ports as needed.
+      ICMP redirects: Cisco "no ip redirects" (interface) maps to Arista
+      global "no ip icmp redirect".
 
 ollama:
   base_url: http://localhost:11434

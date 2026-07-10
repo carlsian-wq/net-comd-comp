@@ -34,7 +34,7 @@ from net_comd_comp.ollama_client import is_ollama_available, model_installed
 from net_comd_comp.ollama_client import OllamaChat
 from net_comd_comp.ollama_lifecycle import ensure_ollama_server
 
-APP_BUILD = "2026-07-10-pdf-ingest-fix"
+APP_BUILD = "2026-07-10-phrase-search-fix"
 
 st.set_page_config(
     page_title="Net Command Comparator",

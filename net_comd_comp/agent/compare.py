@@ -34,6 +34,9 @@ Rules:
 - NEVER answer with a command from a different feature area than the user query.
 - NEVER reuse an example from these instructions unless it matches the user query.
 - Prefer exact CLI syntax from the excerpts when available.
+- Cisco interface "no ip redirects" maps to Arista global "no ip icmp redirect" when excerpts support it.
+- Cisco "spanning-tree portfast bpduguard default" maps to Arista "spanning-tree edge-port bpduguard default".
+- When excerpts show a target command, you MUST return it in target_command even if naming differs slightly.
 - If no exact equivalent exists, give the closest alternative from excerpts and explain the gap.
 - differences and caveats may be empty arrays.
 - Do not invent unsupported commands.
@@ -86,13 +89,18 @@ def _target_overlap_ok(query: str, target_command: str, target_hits: List[Search
     if not target_command.strip():
         return True
     tokens = query_tokens(query)
+    cmd_lower = target_command.lower()
     if keyword_overlap_score(target_command, tokens) >= 0.2:
         return True
-    if target_hits and keyword_overlap_score(
-        f"{target_hits[0].chunk.command_hint}\n{target_hits[0].chunk.text}",
-        tokens,
-    ) >= 0.25:
+    # Cross-vendor synonyms (redirects vs icmp redirect)
+    if "redirect" in query.lower() and "redirect" in cmd_lower:
         return True
+    if target_hits:
+        excerpt = f"{target_hits[0].chunk.command_hint}\n{target_hits[0].chunk.text}".lower()
+        if keyword_overlap_score(excerpt, tokens) >= 0.2:
+            return True
+        if "redirect" in query.lower() and "icmp redirect" in excerpt:
+            return True
     return False
 
 
@@ -149,7 +157,7 @@ class CommandComparator:
                 retrieval_note=f"{target_vendor} chunk count is 0 in the index.",
             )
 
-        if target_conf == "none":
+        if target_conf == "none" and not target_hits:
             return CompareResult(
                 query=query,
                 direction=direction,
