@@ -74,6 +74,97 @@ Or run `./scripts/pull_models.ps1` (Windows) / `./scripts/pull_models.sh` (Linux
 
 Sources are listed in `config.yaml` under `sources.cisco` and `sources.arista`.
 
+### Why some mappings are curated (not in the PDF index)
+
+Cross-vendor equivalents often **are** documented — but not always in one place, or not with obvious wording:
+
+| Topic | Where it usually lives |
+|-------|-------------------------|
+| Arista `no ip icmp redirect` | EOS User Manual (global ICMP) — **in indexed PDF** |
+| Arista `ip icmp rate-limit-unreachable 0` | EOS ICMP / hardening docs — **often missing from the full User Manual PDF** we ingest; campus ops standards fill the gap |
+| Cisco `no ip redirects` / `no ip unreachables` | IOS XE interface commands — in Cisco CR, but PDF text extraction can be noisy |
+| Interface (Cisco) vs global (Arista) scope | Design guides, template configs, SharePoint standards — **rarely a 1:1 “equivalent command” table** |
+
+Ops-confirmed campus mappings live in `config.yaml` under `command_mappings`. Add sources there (or extra PDFs/URLs under `sources`) when you find authoritative vendor text, then re-ingest.
+
+## Recommended virtual server specs
+
+The app runs **Streamlit** (UI) + **Ollama** (LLM + embeddings) on the same host by default. Size for the chat model (`qwen2.5:7b` default), embedding model (`nomic-embed-text`), ingested PDFs, and SQLite/vector index under `data/`.
+
+### Sizing summary
+
+| Tier | vCPU | RAM | GPU (optional) | Disk | Use case |
+|------|------|-----|----------------|------|----------|
+| **Minimum** | 4 | 16 GB | — | 60 GB SSD | Lab / single user; CPU inference is slow |
+| **Recommended** | 8 | 32 GB | 8 GB VRAM (e.g. T4, L4) | 100 GB SSD | Team LAN server; responsive compares |
+| **Higher quality** | 8–16 | 32–64 GB | 16+ GB VRAM | 128 GB SSD | `qwen2.5:14b` or heavier concurrent use |
+
+**Disk breakdown (approx.):** Ollama models ~5–6 GB (`qwen2.5:7b` + `nomic-embed-text`), PDF cache + index ~1–3 GB, OS + venv ~15 GB headroom.
+
+**Network:** open TCP **8503** (Streamlit). Ollama stays on `localhost:11434` unless you split services.
+
+**OS:** Ubuntu 22.04/24.04 LTS or RHEL 9.x for servers; Windows 11 works for dev (see Quick start).
+
+### VMware vSphere / ESXi
+
+| Profile | VM config | Notes |
+|---------|-----------|--------|
+| Recommended | 8 vCPU, 32 GB RAM, 100 GB thin disk (PVSCSI or NVMe) | 1 VM for app + Ollama |
+| With GPU | Above + **NVIDIA vGPU** or passthrough (T4 16 GB, L4 24 GB, A10) | Install NVIDIA driver + CUDA in guest; Ollama uses GPU automatically when available |
+| Minimum | 4 vCPU, 16 GB RAM, 60 GB disk | Set `num_thread` in `config.yaml` to vCPU count; expect 30–90 s compares |
+
+Enable **VMware Tools**, time sync, and a snapshot before first full PDF ingest.
+
+### Microsoft Azure
+
+| SKU | vCPU / RAM | GPU | When to use |
+|-----|------------|-----|-------------|
+| **Standard_D8s_v5** | 8 / 32 GB | — | CPU-only; predictable cost |
+| **Standard_D8as_v5** | 8 / 32 GB | — | AMD alternative |
+| **Standard_NC4as_T4_v3** | 4 / 28 GB | 1× T4 (16 GB) | **Best default GPU VM** for `qwen2.5:7b` |
+| **Standard_NV6ads_A10_v5** | 6 / 55 GB | 1× A10 | Headroom for `qwen2.5:14b` or many users |
+
+Storage: **Premium SSD** or **Premium SSD v2**, 128 GB+. NSG: allow inbound **8503** from your LAN/VNet; restrict `0.0.0.0/0` on production.
+
+Install Ollama in the VM, then clone the repo to `/opt/net-comd-comp` and use `launch.sh --detach`.
+
+### Amazon Web Services (AWS)
+
+| Instance | vCPU / RAM | GPU | When to use |
+|----------|------------|-----|-------------|
+| **m7i.2xlarge** | 8 / 32 GB | — | CPU-only LAN server |
+| **m7i-flex.2xlarge** | 8 / 32 GB | — | Lower cost burstable option |
+| **g4dn.xlarge** | 4 / 16 GB | 1× T4 (16 GB) | Works for 7b; tight on RAM — prefer **g4dn.2xlarge** (8 vCPU / 32 GB) for teams |
+| **g5.xlarge** | 4 / 16 GB | 1× A10G (24 GB) | Stronger GPU; use **g5.2xlarge** if you need more RAM |
+
+EBS: **gp3** 128 GB, 3000+ IOPS. Security group: TCP **8503** from corporate CIDR. Place in a private subnet with VPN/bastion if needed.
+
+Use the **NVIDIA GPU AMI** (Ubuntu) for g4dn/g5, or install drivers via `ubuntu-drivers` / AWS DLAMI docs.
+
+### Google Cloud Platform (GCP)
+
+| Machine type | vCPU / RAM | GPU | When to use |
+|--------------|------------|-----|-------------|
+| **n2-standard-8** | 8 / 32 GB | — | CPU-only |
+| **n2-standard-8 + NVIDIA T4** | 8 / 32 GB | 1× T4 | Attach T4 in `us-central1` / `europe-west4` zones with GPU quota |
+| **g2-standard-4** | 4 / 16 GB | 1× L4 | Newer inference GPU; good for Ollama 7b |
+
+Boot disk: 128 GB **balanced PD** or **SSD**. Firewall: tag `net-comd-comp`, allow **8503** from internal ranges.
+
+### Other hosts (Oracle Cloud, Proxmox, Hyper-V)
+
+Same **Recommended** row applies: **8 vCPU, 32 GB RAM, 100 GB SSD**. On OCI, **VM.Standard.E4.Flex** (8 OCPU / 32 GB) is a common CPU choice; for GPU, check regional **NVIDIA A10** bare metal or GPU shapes if available.
+
+### Post-deploy checklist
+
+1. `sudo systemctl enable --now ollama`
+2. `./scripts/setup.sh` → `./scripts/pull_models.sh` → `./scripts/launch.sh --detach`
+3. Set `server.public_url` in `config.yaml` to the VM’s LAN or private IP
+4. Sidebar: **Ingest sources** → **Build semantic index** (once per environment)
+5. Confirm sidebar shows **Curated mappings loaded: 3** (or your current count)
+
+Tune `ollama.num_thread` in `config.yaml` to match vCPU count on CPU-only VMs.
+
 ## Project layout
 
 ```
