@@ -108,7 +108,7 @@ def main() -> None:
         index = CommandIndex(db_path)
         vector_index = VectorIndex(data_dir, embed_model)
         st.metric("Document chunks", index.count())
-        st.metric("Embedded chunks", vector_index.count())
+        st.metric("Embedded chunks", vector_index.count)
         if st.button("Ingest sources from config"):
             with st.spinner("Fetching PDFs and URLs…"):
                 log_box = st.empty()
@@ -168,7 +168,7 @@ def main() -> None:
         if run:
             if not online:
                 st.error("Ollama is offline. Start the server from the sidebar.")
-            elif vector_index.count() == 0:
+            elif vector_index.count == 0:
                 st.warning("Semantic index is empty. Ingest sources and build the index first.")
             elif not model_installed(chat_model, base_url) or not model_installed(embed_model, base_url):
                 st.error("Required Ollama models are missing.")
