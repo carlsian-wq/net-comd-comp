@@ -34,7 +34,7 @@ from net_comd_comp.ollama_client import is_ollama_available, model_installed
 from net_comd_comp.ollama_client import OllamaChat
 from net_comd_comp.ollama_lifecycle import ensure_ollama_server
 
-APP_BUILD = "2026-07-10-keyword-search-fix"
+APP_BUILD = "2026-07-10-pdf-ingest-fix"
 
 st.set_page_config(
     page_title="Net Command Comparator",
@@ -135,10 +135,15 @@ def main() -> None:
         st.metric("Embedded chunks", vector_index.count)
         if arista_chunks == 0:
             st.error("Arista docs not indexed. Ingest sources (EOS PDF) before comparing.")
-        if cisco_chunks < 2000:
+        cisco_has_pdf = any(
+            row["source_type"] == "pdf"
+            for row in index.list_sources()
+            if row["vendor"] == "cisco"
+        )
+        if not cisco_has_pdf:
             st.warning(
-                "Cisco PDF may not be ingested yet (only HTML pages indexed). "
-                "Use **Replace existing documentation** and re-ingest."
+                "Cisco command-reference PDF is not indexed yet (HTML pages only). "
+                "Click **Ingest sources from config** — PDF is required for most CLI lookups."
             )
         replace_docs = st.checkbox(
             "Replace existing documentation",

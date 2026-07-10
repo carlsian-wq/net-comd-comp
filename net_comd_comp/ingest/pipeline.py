@@ -80,7 +80,7 @@ def ingest_vendor(
         except Exception as exc:
             _log(on_progress, f"Source failed ({name}): {exc}")
             continue
-        if not is_usable_text(text):
+        if not is_usable_text(text, trusted_pdf=(source_type == "pdf")):
             _log(
                 on_progress,
                 f"Skipped unusable page ({name}) — use PDF or print-friendly source",
