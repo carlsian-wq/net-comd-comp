@@ -19,8 +19,10 @@ platforms:
     product: Arista CCS-720XP
     os: Arista EOS 4.36.1F
     notes: >
-      Campus PoE switch. EOS uses enable/configure, interface Ethernet,
-      vlan-aware bridging, EOS extensions (e.g. MLAG, VXLAN where licensed).
+      Campus PoE switch. EOS uses enable/configure, interface Ethernet.
+      STP mapping: Cisco "spanning-tree portfast bpduguard default" maps to
+      Arista "spanning-tree edge-port bpduguard default" (global) plus
+      "spanning-tree portfast" on edge/access ports as needed.
 
 ollama:
   base_url: http://localhost:11434
@@ -73,32 +75,11 @@ sources:
   arista:
     pdfs: []
     urls:
-      - name: EOS 4.36.1F User Manual (index)
-        url: https://www.arista.com/en/um-eos
-      - name: EOS 4.36.1F — Command-Line Interface
-        url: https://www.arista.com/en/um-eos/eos-command-line-interface-cli
-      - name: EOS 4.36.1F — Administering the Switch
-        url: https://www.arista.com/en/um-eos/eos-administering-the-switch
-      - name: EOS 4.36.1F — Initial Configuration
-        url: https://www.arista.com/en/um-eos/eos-initial-configuration-and-recovery
-      - name: EOS 4.36.1F — Interface Configuration
-        url: https://www.arista.com/en/um-eos/eos-interface-configuration
-      - name: EOS 4.36.1F — Layer 2 Configuration
-        url: https://www.arista.com/en/um-eos/eos-layer-2-configuration
-      - name: EOS 4.36.1F — Layer 3 Configuration
-        url: https://www.arista.com/en/um-eos/eos-layer-3-configuration
-      - name: EOS 4.36.1F — IP Services
-        url: https://www.arista.com/en/um-eos/eos-ip-services
-      - name: EOS 4.36.1F — Routing Protocols
-        url: https://www.arista.com/en/um-eos/eos-routing-protocols
-      - name: EOS 4.36.1F — Security
-        url: https://www.arista.com/en/um-eos/eos-security
-      - name: EOS 4.36.1F — QoS and Traffic Management
-        url: https://www.arista.com/en/um-eos/eos-quality-of-service-and-traffic-management
-      - name: EOS 4.36.1F — Switch Environment Control
-        url: https://www.arista.com/en/um-eos/eos-switch-environment-control
-      - name: EOS 4.36.1F — Visibility and Monitoring
-        url: https://www.arista.com/en/um-eos/eos-visibility-and-monitoring-services
+      # Arista um-eos HTML pages require JavaScript and ingest as empty shells.
+      # Use the official EOS User Manual PDF (matches EOS 4.36.1F on arista.com/en/um-eos).
+      - name: EOS 4.36.1F User Manual (full PDF)
+        url: https://www.arista.com/assets/data/pdf/user-manual/EOS-User-Manual.pdf
+        type: pdf
 
 ui:
   page_title: Net Command Comparator

@@ -109,6 +109,12 @@ def main() -> None:
         vector_index = VectorIndex(data_dir, embed_model)
         st.metric("Document chunks", index.count())
         st.metric("Embedded chunks", vector_index.count)
+        replace_docs = st.checkbox(
+            "Replace existing documentation",
+            value=True,
+            help="Clear old chunks before ingest. Required after fixing Arista sources "
+            "(removes JavaScript error-page junk). Rebuild the semantic index afterward.",
+        )
         if st.button("Ingest sources from config"):
             with st.spinner("Fetching PDFs and URLs…"):
                 log_box = st.empty()
@@ -116,8 +122,15 @@ def main() -> None:
                 def log(msg: str) -> None:
                     log_box.caption(msg)
 
-                counts = ingest_all_sources(index, cfg, on_progress=log)
+                if replace_docs:
+                    vector_index.clear()
+                    log("Cleared semantic index for rebuild")
+                counts = ingest_all_sources(
+                    index, cfg, on_progress=log, replace=replace_docs
+                )
             st.success(f"Ingested — Cisco: {counts['cisco']}, Arista: {counts['arista']} new chunks")
+            if replace_docs:
+                st.info("Run **Build semantic index** next to refresh search.")
             st.rerun()
 
         if st.button("Build semantic index"):

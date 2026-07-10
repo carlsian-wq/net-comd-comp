@@ -5,6 +5,7 @@ from typing import Callable, Dict, List, Optional
 
 from net_comd_comp.config import ROOT, load_config, vendor_sources
 from net_comd_comp.ingest.chunker import chunk_text, dedupe_chunks
+from net_comd_comp.ingest.quality import filter_chunks, is_usable_text
 from net_comd_comp.ingest.pdf_loader import extract_pdf_text
 from net_comd_comp.ingest.url_loader import (
     fetch_pdf_text_cached,
@@ -31,9 +32,15 @@ def ingest_vendor(
     vendor: str,
     cfg: Dict,
     on_progress: ProgressFn = None,
+    *,
+    replace: bool = False,
 ) -> int:
     sources = vendor_sources(cfg, vendor)
     added = 0
+
+    if replace:
+        removed = index.clear_vendor(vendor)
+        _log(on_progress, f"Cleared {removed} existing {vendor} chunks")
 
     for pdf_path in sources["pdfs"]:
         path = _resolve_pdf(pdf_path)
@@ -42,7 +49,7 @@ def ingest_vendor(
             continue
         _log(on_progress, f"Ingesting {vendor} PDF: {path.name}")
         text = extract_pdf_text(path)
-        chunks = dedupe_chunks(chunk_text(text))
+        chunks = filter_chunks(dedupe_chunks(chunk_text(text)))
         n = index.upsert_chunks(
             vendor=vendor,
             source_name=path.stem,
@@ -73,10 +80,16 @@ def ingest_vendor(
         except Exception as exc:
             _log(on_progress, f"Source failed ({name}): {exc}")
             continue
-        if not text.strip():
-            _log(on_progress, f"No text extracted ({name})")
+        if not is_usable_text(text):
+            _log(
+                on_progress,
+                f"Skipped unusable page ({name}) — use PDF or print-friendly source",
+            )
             continue
-        chunks = dedupe_chunks(chunk_text(text))
+        chunks = filter_chunks(dedupe_chunks(chunk_text(text)))
+        if not chunks:
+            _log(on_progress, f"No usable chunks ({name})")
+            continue
         n = index.upsert_chunks(
             vendor=vendor,
             source_name=name,
@@ -93,9 +106,11 @@ def ingest_all_sources(
     index: CommandIndex,
     cfg: Optional[Dict] = None,
     on_progress: ProgressFn = None,
+    *,
+    replace: bool = False,
 ) -> Dict[str, int]:
     cfg = cfg or load_config()
     return {
-        "cisco": ingest_vendor(index, "cisco", cfg, on_progress),
-        "arista": ingest_vendor(index, "arista", cfg, on_progress),
+        "cisco": ingest_vendor(index, "cisco", cfg, on_progress, replace=replace),
+        "arista": ingest_vendor(index, "arista", cfg, on_progress, replace=replace),
     }

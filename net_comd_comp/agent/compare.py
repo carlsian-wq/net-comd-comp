@@ -29,6 +29,8 @@ Rules:
 - Arista side: CCS-720XP, EOS 4.36.1F — interface names like Ethernet1, Ethernet1/1.
 - Prefer exact CLI syntax from the excerpts when available.
 - Map IOS-XE idioms (e.g. switchport trunk allowed vlan) to EOS idioms (switchport trunk allowed vlan on Arista is similar but verify mode defaults).
+- Cisco "spanning-tree portfast bpduguard default" typically maps to Arista globals
+  "spanning-tree edge-port bpduguard default" and portfast/edge-port settings; cite both when relevant.
 - If no exact equivalent exists, give the closest alternative and explain the gap.
 - Note when a feature requires a license or is not available on CCS-720XP or Catalyst 9300.
 - differences and caveats may be empty arrays.
