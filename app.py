@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import socket
 from pathlib import Path
 
@@ -11,6 +12,15 @@ from net_comd_comp.config import ROOT, load_config, platform_context, resolve_pa
 from net_comd_comp.embeddings.ollama_embed import OllamaEmbeddings
 from net_comd_comp.embeddings.vector_index import VectorIndex
 from net_comd_comp.index.store import CommandIndex
+
+# Streamlit keeps imported submodules in memory; reload so ingest fixes apply without restart.
+import net_comd_comp.ingest.quality as _ingest_quality
+import net_comd_comp.ingest.url_loader as _ingest_url_loader
+import net_comd_comp.ingest.pipeline as _ingest_pipeline
+
+importlib.reload(_ingest_quality)
+importlib.reload(_ingest_url_loader)
+importlib.reload(_ingest_pipeline)
 from net_comd_comp.ingest.pipeline import ingest_all_sources
 from net_comd_comp.ollama_client import is_ollama_available, model_installed
 from net_comd_comp.ollama_client import OllamaChat
@@ -124,10 +134,11 @@ def main() -> None:
 
                 if replace_docs:
                     vector_index.clear()
+                    for vendor in ("cisco", "arista"):
+                        removed = index.clear_vendor(vendor)
+                        log(f"Cleared {removed} {vendor} chunks")
                     log("Cleared semantic index for rebuild")
-                counts = ingest_all_sources(
-                    index, cfg, on_progress=log, replace=replace_docs
-                )
+                counts = ingest_all_sources(index, cfg, on_progress=log)
             st.success(f"Ingested — Cisco: {counts['cisco']}, Arista: {counts['arista']} new chunks")
             if replace_docs:
                 st.info("Run **Build semantic index** next to refresh search.")
