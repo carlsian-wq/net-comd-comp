@@ -38,7 +38,7 @@ from net_comd_comp.ollama_client import is_ollama_available, model_installed
 from net_comd_comp.ollama_client import OllamaChat
 from net_comd_comp.ollama_lifecycle import ensure_ollama_server
 
-APP_BUILD = "2026-07-10-cli-skeleton-search"
+APP_BUILD = "2026-07-10-colleague-mappings"
 
 st.set_page_config(
     page_title="Net Command Comparator",

@@ -20,25 +20,57 @@ platforms:
     os: Arista EOS 4.36.1F
     notes: >
       Campus PoE switch. EOS uses enable/configure, interface Ethernet.
-      STP mapping: Cisco "spanning-tree portfast bpduguard default" maps to
-      Arista "spanning-tree edge-port bpduguard default" (global) plus
-      "spanning-tree portfast" on edge/access ports as needed.
+      Campus standards (ops-confirmed): Cisco interface "no ip redirects" → global
+      "no ip icmp redirect"; Cisco interface "no ip unreachables" → global
+      "ip icmp rate-limit-unreachable 0"; Cisco "spanning-tree portfast bpduguard default"
+      → "spanning-tree edge-port bpduguard default".
 
 command_mappings:
-  # Curated mappings override LLM when the query matches exactly (edit as needed).
+  # Curated mappings override LLM when the query matches (ops-confirmed campus standards).
   - id: no-ip-redirects
     cisco: no ip redirects
-    arista: no ip unreachables
+    arista: no ip icmp redirect
     bidirectional: true
     notes: >
-      Campus L3 interface hardening. Cisco suppresses ICMP redirect messages;
-      Arista equivalent is no ip unreachables on the interface.
+      Cisco suppresses ICMP redirects per SVI/interface. Arista has no interface-level
+      equivalent; use global no ip icmp redirect (applies to all interfaces).
     differences:
-      - "Cisco: no ip redirects (interface). Arista: no ip unreachables (interface)."
+      - "Cisco: no ip redirects under interface configuration."
+      - "Arista: no ip icmp redirect in global configuration mode."
+    reject_targets:
+      - no ip unreachables
+      - ip icmp rate-limit-unreachable
+    caveats:
+      - "Ops-confirmed campus standard. EOS 4.36.1F manual documents no ip icmp redirect (section 14.1.11.48)."
+
+  - id: no-ip-unreachables
+    cisco: no ip unreachables
+    arista: ip icmp rate-limit-unreachable 0
+    bidirectional: true
+    notes: >
+      Cisco suppresses ICMP unreachable messages per SVI/interface. Arista has no
+      interface-level equivalent; use global ip icmp rate-limit-unreachable 0.
+    differences:
+      - "Cisco: no ip unreachables under interface configuration."
+      - "Arista: ip icmp rate-limit-unreachable 0 in global configuration mode."
     reject_targets:
       - no ip icmp redirect
+      - no ip unreachables
     caveats:
-      - "Curated mapping — EOS 4.36.1F manual also documents no ip icmp redirect for redirect control."
+      - "Ops-confirmed campus standard."
+      - "Exact Arista syntax not present in indexed EOS 4.36.1F PDF — mapping from operations team."
+
+  - id: stp-bpduguard-default
+    cisco: spanning-tree portfast bpduguard default
+    arista: spanning-tree edge-port bpduguard default
+    bidirectional: true
+    notes: >
+      Cisco portfast terminology maps to Arista edge-port. Enables BPDU guard by
+      default on edge ports globally.
+    differences:
+      - "Cisco: portfast. Arista: edge-port."
+    caveats:
+      - "Ops-confirmed campus standard. EOS manual Layer 2 / BPDU Guard section covers related syntax."
 
 ollama:
   base_url: http://localhost:11434

@@ -60,12 +60,20 @@ def related_phrases(query: str, *, target_vendor: str | None = None) -> list[str
     q = re.sub(r"\s+", " ", query.strip().lower())
     related: list[str] = []
 
-    # Cisco "redirects" hardening only — do not broaden "no ip icmp redirect" lookups.
+    # ICMP hardening — redirects and unreachables are separate mappings on Arista.
     if "icmp redirect" not in q and re.search(r"\bredirects?\b", q):
-        related.extend(["no ip unreachables", "ip unreachables"])
+        related.extend(["no ip icmp redirect", "ip icmp redirect"])
 
-    if "unreachable" in q:
-        related.extend(["no ip unreachables", "ip unreachables", "icmp unreachable"])
+    if "rate-limit-unreachable" in q or (
+        "unreachable" in q and "redirect" not in q
+    ):
+        related.extend(
+            [
+                "ip icmp rate-limit-unreachable",
+                "rate-limit-unreachable",
+                "no ip unreachables",
+            ]
+        )
 
     if "portfast" in q or "bpduguard" in q:
         related.extend(

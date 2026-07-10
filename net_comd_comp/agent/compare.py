@@ -49,6 +49,8 @@ Rules:
 - SNMPv3 examples: Cisco may show "user ... v3 auth sha ... priv aes256";
   Arista uses "snmp-server user ... v3 auth sha ... priv aes" — treat aes/aes256 as equivalent options.
 - Honor curated command_mappings from configuration when provided in the user prompt.
+- Campus ICMP hardening (Cisco interface → Arista global): "no ip redirects" → "no ip icmp redirect";
+  "no ip unreachables" → "ip icmp rate-limit-unreachable 0". Note scope change: interface vs global.
 - Cisco "spanning-tree portfast bpduguard default" maps to Arista "spanning-tree edge-port bpduguard default".
 - When excerpts show a target command, you MUST return it in target_command even if naming differs slightly.
 - If no exact equivalent exists, give the closest alternative from excerpts and explain the gap.
