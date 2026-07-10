@@ -1,0 +1,40 @@
+# Net Command Comparator — portable configuration
+# Change server.public_url so LAN users know where to connect.
+
+server:
+  host: 0.0.0.0
+  port: 8503
+  # URL shown in the UI and shared with users (set to your server LAN/WAN IP)
+  public_url: http://localhost:8503
+
+ollama:
+  base_url: http://localhost:11434
+  chat_model: qwen2.5:3b
+  embed_model: nomic-embed-text
+  num_thread: 24
+
+search:
+  top_k: 10
+  min_similarity: 0.32
+
+index:
+  db_path: data/net_comd_comp.db
+  data_dir: data
+
+sources:
+  cisco:
+    pdfs:
+      # - data/sources/cisco/ios-xe-cli-guide.pdf
+    urls:
+      - name: Cisco IOS XE CLI reference (web)
+        url: https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/fundamentals/command/cf_command_ref.html
+  arista:
+    pdfs:
+      # - data/sources/arista/eos-cli.pdf
+    urls:
+      - name: Arista EOS CLI command reference
+        url: https://www.arista.com/en/support/product-documentation/eos-command-reference
+
+ui:
+  page_title: Net Command Comparator
+  default_direction: auto
