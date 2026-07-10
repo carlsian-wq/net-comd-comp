@@ -9,15 +9,18 @@ import streamlit as st
 from net_comd_comp.config import ROOT, load_config, platform_context, resolve_path
 from net_comd_comp.embeddings.ollama_embed import OllamaEmbeddings
 from net_comd_comp.embeddings.vector_index import VectorIndex
-from net_comd_comp.index.store import CommandIndex
 
-# Streamlit keeps imported submodules in memory; reload so ingest fixes apply without restart.
+# Streamlit caches imported modules; reload project code so fixes apply without restart.
+import net_comd_comp.agent.keywords as _agent_keywords
 import net_comd_comp.agent.compare as _agent_compare
 import net_comd_comp.agent.search as _agent_search
+import net_comd_comp.index.store as _index_store
 import net_comd_comp.ingest.quality as _ingest_quality
 import net_comd_comp.ingest.url_loader as _ingest_url_loader
 import net_comd_comp.ingest.pipeline as _ingest_pipeline
 
+importlib.reload(_agent_keywords)
+importlib.reload(_index_store)
 importlib.reload(_ingest_quality)
 importlib.reload(_ingest_url_loader)
 importlib.reload(_ingest_pipeline)
@@ -25,12 +28,13 @@ importlib.reload(_agent_search)
 importlib.reload(_agent_compare)
 from net_comd_comp.agent.compare import CommandComparator  # noqa: E402
 from net_comd_comp.agent.search import SemanticSearcher  # noqa: E402
+from net_comd_comp.index.store import CommandIndex  # noqa: E402
 from net_comd_comp.ingest.pipeline import ingest_all_sources
 from net_comd_comp.ollama_client import is_ollama_available, model_installed
 from net_comd_comp.ollama_client import OllamaChat
 from net_comd_comp.ollama_lifecycle import ensure_ollama_server
 
-APP_BUILD = "2026-07-10-retrieval-fix"
+APP_BUILD = "2026-07-10-keyword-search-fix"
 
 st.set_page_config(
     page_title="Net Command Comparator",
