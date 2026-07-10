@@ -10,6 +10,7 @@ data/*.db-*
 data/semantic_*.npz
 data/semantic_*.json
 data/sources/*.pdf
+data/sources/cache/
 .streamlit/secrets.toml
 *.log
 .DS_Store

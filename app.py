@@ -7,7 +7,7 @@ import streamlit as st
 
 from net_comd_comp.agent.compare import CommandComparator
 from net_comd_comp.agent.search import SemanticSearcher
-from net_comd_comp.config import ROOT, load_config, resolve_path
+from net_comd_comp.config import ROOT, load_config, platform_context, resolve_path
 from net_comd_comp.embeddings.ollama_embed import OllamaEmbeddings
 from net_comd_comp.embeddings.vector_index import VectorIndex
 from net_comd_comp.index.store import CommandIndex
@@ -64,9 +64,13 @@ def main() -> None:
     search_cfg = cfg.get("search", {})
 
     st.title(ui.get("page_title", "Net Command Comparator"))
+    platforms = cfg.get("platforms", {})
+    cisco_p = platforms.get("cisco", {})
+    arista_p = platforms.get("arista", {})
     st.caption(
-        "Semantic Arista ↔ Cisco CLI translation powered by Ollama. "
-        "Sources: PDFs and vendor documentation URLs in `config.yaml`."
+        f"**Cisco:** {cisco_p.get('product', 'Catalyst')} · {cisco_p.get('os', 'IOS XE')}  \n"
+        f"**Arista:** {arista_p.get('product', 'CCS')} · {arista_p.get('os', 'EOS')}  \n"
+        "Semantic CLI translation powered by Ollama."
     )
 
     with st.sidebar:
@@ -83,7 +87,7 @@ def main() -> None:
         base_url = ollama_cfg.get("base_url", "http://localhost:11434")
         online = is_ollama_available(base_url)
         st.markdown("Status: **online**" if online else "Status: **offline**")
-        chat_model = ollama_cfg.get("chat_model", "qwen2.5:3b")
+        chat_model = ollama_cfg.get("chat_model", "qwen2.5:7b")
         embed_model = ollama_cfg.get("embed_model", "nomic-embed-text")
         if online:
             st.caption(f"Chat: `{chat_model}` · Embed: `{embed_model}`")
@@ -185,8 +189,13 @@ def main() -> None:
                     model=chat_model,
                     base_url=base_url,
                     num_thread=ollama_cfg.get("num_thread"),
+                    timeout=ollama_cfg.get("chat_timeout", 180),
                 )
-                comparator = CommandComparator(searcher, chat)
+                comparator = CommandComparator(
+                    searcher,
+                    chat,
+                    platform_context=platform_context(cfg),
+                )
                 with st.spinner("Searching documentation and comparing syntax…"):
                     result = comparator.compare(query.strip(), direction=direction)
 
@@ -229,29 +238,24 @@ def main() -> None:
                             )
 
     with tab_admin:
-        st.markdown("### Add documentation")
+        st.markdown("### Curated documentation sources")
         st.markdown(
-            "1. Place PDF files under `data/sources/` (or any path).\n"
-            "2. Add PDF paths and vendor doc URLs to `config.yaml` under `sources.cisco` / `sources.arista`.\n"
-            "3. Use **Ingest sources** then **Build semantic index** in the sidebar.\n"
-            "4. Set `server.public_url` to your web server's address so users know where to connect."
+            "Default sources target **Catalyst 9300 (IOS XE 26.x)** and "
+            "**CCS-720XP (EOS 4.36.1F)**. Run **Ingest sources** then "
+            "**Build semantic index** in the sidebar (first run may take several minutes "
+            "while the Cisco 16 MB PDF downloads)."
         )
-        st.code(
-            f"""# Example config.yaml entries
-sources:
-  cisco:
-    pdfs:
-      - data/sources/cisco/ios-xe-guide.pdf
-    urls:
-      - name: IOS XE reference
-        url: https://www.cisco.com/...
-  arista:
-    pdfs:
-      - data/sources/arista/eos-cli.pdf
-    urls:
-      - name: EOS command reference
-        url: https://www.arista.com/...""",
-            language="yaml",
+        for vendor in ("cisco", "arista"):
+            p = platforms.get(vendor, {})
+            st.markdown(f"#### {p.get('product', vendor.title())}")
+            st.caption(p.get("os", ""))
+            for entry in cfg.get("sources", {}).get(vendor, {}).get("urls", []):
+                if isinstance(entry, dict):
+                    st.markdown(f"- {entry.get('name', entry.get('url', ''))}")
+        st.markdown("### Add more sources")
+        st.markdown(
+            "Edit `config.yaml` — add local PDFs under `data/sources/` or new URLs "
+            "(set `type: pdf` for remote PDFs). Re-ingest and rebuild the index."
         )
         st.info(f"Project root: `{ROOT}`")
 

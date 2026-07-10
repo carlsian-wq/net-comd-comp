@@ -6,7 +6,11 @@ from typing import Callable, Dict, List, Optional
 from net_comd_comp.config import ROOT, load_config, vendor_sources
 from net_comd_comp.ingest.chunker import chunk_text, dedupe_chunks
 from net_comd_comp.ingest.pdf_loader import extract_pdf_text
-from net_comd_comp.ingest.url_loader import fetch_url_text
+from net_comd_comp.ingest.url_loader import (
+    fetch_pdf_text_cached,
+    fetch_url_text,
+    is_pdf_url,
+)
 from net_comd_comp.index.store import CommandIndex
 
 ProgressFn = Optional[Callable[[str], None]]
@@ -48,25 +52,35 @@ def ingest_vendor(
         )
         added += n
 
+    pdf_cache = ROOT / "data" / "sources" / "cache"
+
     for entry in sources["urls"]:
         if isinstance(entry, str):
-            name, url = entry, entry
+            name, url, entry_type = entry, entry, None
         else:
             name = entry.get("name") or entry.get("url", "web")
             url = entry.get("url", "")
+            entry_type = entry.get("type")
         if not url:
             continue
-        _log(on_progress, f"Ingesting {vendor} URL: {name}")
+        source_type = "pdf" if is_pdf_url(url, entry_type) else "url"
+        _log(on_progress, f"Ingesting {vendor} {source_type.upper()}: {name}")
         try:
-            text = fetch_url_text(url)
+            if source_type == "pdf":
+                text = fetch_pdf_text_cached(url, pdf_cache)
+            else:
+                text = fetch_url_text(url)
         except Exception as exc:
-            _log(on_progress, f"URL failed ({name}): {exc}")
+            _log(on_progress, f"Source failed ({name}): {exc}")
+            continue
+        if not text.strip():
+            _log(on_progress, f"No text extracted ({name})")
             continue
         chunks = dedupe_chunks(chunk_text(text))
         n = index.upsert_chunks(
             vendor=vendor,
             source_name=name,
-            source_type="url",
+            source_type=source_type,
             source_ref=url,
             chunks=chunks,
         )

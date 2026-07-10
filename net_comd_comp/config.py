@@ -26,3 +26,20 @@ def vendor_sources(cfg: Dict[str, Any], vendor: str) -> Dict[str, List]:
         "pdfs": list(sources.get("pdfs") or []),
         "urls": list(sources.get("urls") or []),
     }
+
+
+def platform_context(cfg: Dict[str, Any]) -> str:
+    """Human-readable platform scope for the comparison agent."""
+    platforms = cfg.get("platforms") or {}
+    lines: List[str] = []
+    for key in ("cisco", "arista"):
+        p = platforms.get(key) or {}
+        if not p:
+            continue
+        product = p.get("product", key)
+        os_name = p.get("os", "")
+        notes = (p.get("notes") or "").strip()
+        lines.append(f"- {product} ({os_name})")
+        if notes:
+            lines.append(f"  {notes}")
+    return "\n".join(lines) if lines else "Cisco IOS XE and Arista EOS campus switches."

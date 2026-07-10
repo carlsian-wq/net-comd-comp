@@ -2,25 +2,29 @@
 
 Intelligent Arista ↔ Cisco network command comparison using **Ollama** for semantic search and translation.
 
-Enter a CLI command or a natural-language description of what you want to configure; the agent retrieves relevant documentation (PDFs and vendor URLs), then returns the equivalent command on the other platform with syntax differences and caveats.
+**Target platforms (default):**
 
-## Features
+| Vendor | Hardware | OS |
+|--------|----------|-----|
+| Cisco | Catalyst 9300 Series | IOS XE 26.x.x |
+| Arista | CCS-720XP | EOS 4.36.1F |
 
-- **Bidirectional translation**: Cisco → Arista, Arista → Cisco, or auto-detect
-- **Documentation ingestion**: PDF files and live vendor documentation URLs
-- **Semantic search**: Ollama embeddings (`nomic-embed-text`) over ingested CLI excerpts
-- **Comparison agent**: Ollama chat model explains equivalents and differences
-- **Portable deployment**: `config.yaml` controls bind address, port, and public URL for multi-user access
+Enter a CLI command or natural-language description; the agent retrieves vendor documentation (PDFs + official URLs), then returns the equivalent command with syntax differences and caveats.
 
 ## Quick start
 
 ```powershell
 cd C:\Users\c_sia\OneDrive\Documents\GitHub\net-comd-comp
 .\scripts\setup.ps1
+.\scripts\pull_models.ps1
 .\scripts\launch.ps1
 ```
 
-Open the URL shown in the sidebar. For LAN users, set in `config.yaml`:
+In the sidebar: **Ingest sources from config** → **Build semantic index** (first ingest downloads the Cisco 9300 command-reference PDF).
+
+## LAN deployment
+
+Edit `config.yaml`:
 
 ```yaml
 server:
@@ -29,31 +33,38 @@ server:
   public_url: http://YOUR_SERVER_IP:8503
 ```
 
-## Ollama models
+Open LAN access is enabled by default (`host: 0.0.0.0`). No login required.
+
+## Ollama models (higher quality)
 
 ```powershell
-ollama pull qwen2.5:3b
+ollama pull qwen2.5:7b
 ollama pull nomic-embed-text
 ```
 
-## Adding documentation
+`qwen2.5:7b` fits an 8 GB GPU (e.g. RTX 5060 Laptop). For more quality on a larger GPU, try `qwen2.5:14b` in `config.yaml`.
 
-1. Copy PDFs into `data/sources/` (or reference any path).
-2. Edit `config.yaml` under `sources.cisco` and `sources.arista`.
-3. In the app sidebar: **Ingest sources from config** → **Build semantic index**.
+## Curated documentation
+
+**Cisco** — Catalyst 9300 IOS XE 26.x command reference (PDF + HTML chapters): VLAN, L2/L3, QoS, security, routing, stacking, system management.
+
+**Arista** — EOS 4.36.1F User Manual chapters: CLI, interfaces, L2/L3, routing, security, QoS, administration.
+
+Sources are listed in `config.yaml` under `sources.cisco` and `sources.arista`.
 
 ## Project layout
 
 ```
 app.py                  Streamlit UI
-config.yaml             Server, Ollama, sources, search settings
+config.yaml             Platforms, server, Ollama, curated sources
 net_comd_comp/
-  ingest/               PDF + URL loaders, chunking
+  ingest/               PDF + URL loaders (incl. remote PDF cache)
   index/                SQLite chunk store
   embeddings/           Ollama embed + vector index
-  agent/                Semantic search + comparison
+  agent/                Semantic search + platform-aware comparison
 scripts/
   setup.ps1             venv + pip install
+  pull_models.ps1       Ollama model pull helper
   launch.ps1            Start Ollama + Streamlit
 ```
 

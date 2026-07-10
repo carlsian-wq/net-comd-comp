@@ -4,18 +4,34 @@
 server:
   host: 0.0.0.0
   port: 8503
-  # URL shown in the UI and shared with users (set to your server LAN/WAN IP)
   public_url: http://localhost:8503
+
+platforms:
+  cisco:
+    vendor: cisco
+    product: Cisco Catalyst 9300 Series
+    os: Cisco IOS XE 26.x.x
+    notes: >
+      Campus/access switching. StackWise-480, UADP ASIC. CLI uses configure terminal,
+      interface GigabitEthernet/Te/Tw/Fo, vlan config, policy-map for QoS.
+  arista:
+    vendor: arista
+    product: Arista CCS-720XP
+    os: Arista EOS 4.36.1F
+    notes: >
+      Campus PoE switch. EOS uses enable/configure, interface Ethernet,
+      vlan-aware bridging, EOS extensions (e.g. MLAG, VXLAN where licensed).
 
 ollama:
   base_url: http://localhost:11434
-  chat_model: qwen2.5:3b
+  chat_model: qwen2.5:7b
   embed_model: nomic-embed-text
   num_thread: 24
+  chat_timeout: 180
 
 search:
-  top_k: 10
-  min_similarity: 0.32
+  top_k: 12
+  min_similarity: 0.30
 
 index:
   db_path: data/net_comd_comp.db
@@ -23,17 +39,66 @@ index:
 
 sources:
   cisco:
-    pdfs:
-      # - data/sources/cisco/ios-xe-cli-guide.pdf
+    pdfs: []
     urls:
-      - name: Cisco IOS XE CLI reference (web)
-        url: https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/fundamentals/command/cf_command_ref.html
+      - name: Catalyst 9300 IOS XE 26.x Command Reference (PDF)
+        url: https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9300/software/release/26-x/command_reference/b_26x_9300_cr.pdf
+        type: pdf
+      - name: Catalyst 9300 IOS XE 26.x Command Reference (index)
+        url: https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9300/software/release/26-x/command_reference/b_26x_9300_cr.html
+      - name: IOS XE 26.x — Using the CLI
+        url: https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9300/software/release/26-x/command_reference/b_26x_9300_cr/using_the_command_line_interface.html
+      - name: IOS XE 26.x — Interface and Hardware Commands
+        url: https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9300/software/release/26-x/command_reference/b_26x_9300_cr/interface_and_hardware_commands.html
+      - name: IOS XE 26.x — Layer 2/3 Commands
+        url: https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9300/software/release/26-x/command_reference/b_26x_9300_cr/layer_2_3_commands.html
+      - name: IOS XE 26.x — VLAN Commands
+        url: https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9300/software/release/26-x/command_reference/b_26x_9300_cr/vlan_commands.html
+      - name: IOS XE 26.x — Security Commands
+        url: https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9300/software/release/26-x/command_reference/b_26x_9300_cr/security_commands.html
+      - name: IOS XE 26.x — QoS Commands
+        url: https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9300/software/release/26-x/command_reference/b_26x_9300_cr/qos_commands.html
+      - name: IOS XE 26.x — IP Routing Commands
+        url: https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9300/software/release/26-x/command_reference/b_26x_9300_cr/unicast_routing_commands.html
+      - name: IOS XE 26.x — IP Addressing Services
+        url: https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9300/software/release/26-x/command_reference/b_26x_9300_cr/ip_addressing_services_commands.html
+      - name: IOS XE 26.x — Stack Manager and HA
+        url: https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9300/software/release/26-x/command_reference/b_26x_9300_cr/stack_manager_and_high_availability_commands.html
+      - name: IOS XE 26.x — System Management
+        url: https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9300/software/release/26-x/command_reference/b_26x_9300_cr/system_management_commands.html
+      - name: IOS XE 26.x — Network Management
+        url: https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9300/software/release/26-x/command_reference/b_26x_9300_cr/network_management_commands.html
+      - name: IOS XE 26.x — Programmability Commands
+        url: https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/prog/command/26x/26x-prog-commands.html
   arista:
-    pdfs:
-      # - data/sources/arista/eos-cli.pdf
+    pdfs: []
     urls:
-      - name: Arista EOS CLI command reference
-        url: https://www.arista.com/en/support/product-documentation/eos-command-reference
+      - name: EOS 4.36.1F User Manual (index)
+        url: https://www.arista.com/en/um-eos
+      - name: EOS 4.36.1F — Command-Line Interface
+        url: https://www.arista.com/en/um-eos/eos-command-line-interface-cli
+      - name: EOS 4.36.1F — Administering the Switch
+        url: https://www.arista.com/en/um-eos/eos-administering-the-switch
+      - name: EOS 4.36.1F — Initial Configuration
+        url: https://www.arista.com/en/um-eos/eos-initial-configuration-and-recovery
+      - name: EOS 4.36.1F — Interface Configuration
+        url: https://www.arista.com/en/um-eos/eos-interface-configuration
+      - name: EOS 4.36.1F — Layer 2 Configuration
+        url: https://www.arista.com/en/um-eos/eos-layer-2-configuration
+      - name: EOS 4.36.1F — Layer 3 Configuration
+        url: https://www.arista.com/en/um-eos/eos-layer-3-configuration
+      - name: EOS 4.36.1F — IP Services
+        url: https://www.arista.com/en/um-eos/eos-ip-services
+      - name: EOS 4.36.1F — Routing Protocols
+        url: https://www.arista.com/en/um-eos/eos-routing-protocols
+      - name: EOS 4.36.1F — Security
+        url: https://www.arista.com/en/um-eos/eos-security
+      - name: EOS 4.36.1F — QoS and Traffic Management
+        url: https://www.arista.com/en/um-eos/eos-quality-of-service-and-traffic-management
+      - name: EOS 4.36.1F — Switch Environment Control
+        url: https://www.arista.com/en/um-eos/eos-switch-environment-control
+      - name: EOS 4.36.1F — Visibility and Monitoring
+        url: https://www.arista.com/en/um-eos/eos-visibility-and-monitoring-services
 
 ui:
   page_title: Net Command Comparator
