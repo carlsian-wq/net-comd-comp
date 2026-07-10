@@ -58,7 +58,7 @@ command_mappings:
       - no ip unreachables
     caveats:
       - "Ops-confirmed campus standard."
-      - "Exact Arista syntax not present in indexed EOS 4.36.1F PDF — mapping from operations team."
+      - "Documented in Arista EOS Hardening Guide (Community); export PDF for ingest — not in User Manual PDF alone."
 
   - id: stp-bpduguard-default
     cisco: spanning-tree portfast bpduguard default
@@ -122,13 +122,18 @@ sources:
       - name: IOS XE 26.x — Programmability Commands
         url: https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/prog/command/26x/26x-prog-commands.html
   arista:
-    pdfs: []
+    pdfs:
+      - data/sources/arista-eos-hardening-guide.pdf
     urls:
       # Arista um-eos HTML pages require JavaScript and ingest as empty shells.
       # Use the official EOS User Manual PDF (matches EOS 4.36.1F on arista.com/en/um-eos).
       - name: EOS 4.36.1F User Manual (full PDF)
         url: https://www.arista.com/assets/data/pdf/user-manual/EOS-User-Manual.pdf
         type: pdf
+      # Updated monthly on Arista Community; auto-ingest usually fails (Salesforce SPA).
+      # Kept for reference — prefer manual PDF export (see pdfs above).
+      - name: Arista EOS Hardening Guide (Community)
+        url: https://arista.my.site.com/AristaCommunity/s/article/arista-eos-hardening-guide
 
 ui:
   page_title: Net Command Comparator

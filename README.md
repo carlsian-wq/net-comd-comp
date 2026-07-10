@@ -70,7 +70,19 @@ Or run `./scripts/pull_models.ps1` (Windows) / `./scripts/pull_models.sh` (Linux
 
 **Cisco** — Catalyst 9300 IOS XE 26.x command reference (PDF + HTML chapters): VLAN, L2/L3, QoS, security, routing, stacking, system management.
 
-**Arista** — EOS 4.36.1F User Manual chapters: CLI, interfaces, L2/L3, routing, security, QoS, administration.
+**Arista** — EOS 4.36.1F User Manual (PDF): CLI, interfaces, L2/L3, routing, security, QoS, administration.
+
+**Arista EOS Hardening Guide** (recommended, updated frequently) — ICMP hardening, global vs interface scope, and commands such as `ip icmp rate-limit-unreachable` that are **not** always in the User Manual PDF:
+
+https://arista.my.site.com/AristaCommunity/s/article/arista-eos-hardening-guide
+
+The Community article is a **JavaScript SPA**; the ingest pipeline cannot scrape it reliably. To index it:
+
+1. Open the article in a browser (Arista Community login if required).
+2. **Print → Save as PDF** (or export if Arista provides a download).
+3. Save as `data/sources/arista-eos-hardening-guide.pdf`.
+4. Uncomment the `pdfs` entry under `sources.arista` in `config.yaml`.
+5. **Ingest sources** → **Build semantic index** (replace existing Arista docs if you want a clean merge).
 
 Sources are listed in `config.yaml` under `sources.cisco` and `sources.arista`.
 
@@ -81,7 +93,7 @@ Cross-vendor equivalents often **are** documented — but not always in one plac
 | Topic | Where it usually lives |
 |-------|-------------------------|
 | Arista `no ip icmp redirect` | EOS User Manual (global ICMP) — **in indexed PDF** |
-| Arista `ip icmp rate-limit-unreachable 0` | EOS ICMP / hardening docs — **often missing from the full User Manual PDF** we ingest; campus ops standards fill the gap |
+| Arista `ip icmp rate-limit-unreachable 0` | [Arista EOS Hardening Guide](https://arista.my.site.com/AristaCommunity/s/article/arista-eos-hardening-guide) — **not in User Manual PDF**; ingest via exported PDF or use `command_mappings` |
 | Cisco `no ip redirects` / `no ip unreachables` | IOS XE interface commands — in Cisco CR, but PDF text extraction can be noisy |
 | Interface (Cisco) vs global (Arista) scope | Design guides, template configs, SharePoint standards — **rarely a 1:1 “equivalent command” table** |
 
