@@ -33,12 +33,17 @@ importlib.reload(_agent_compare)
 from net_comd_comp.agent.compare import CommandComparator  # noqa: E402
 from net_comd_comp.agent.search import SemanticSearcher  # noqa: E402
 from net_comd_comp.index.store import CommandIndex  # noqa: E402
-from net_comd_comp.ingest.pipeline import ingest_all_sources
+from net_comd_comp.ingest.pipeline import (
+    ingest_all_sources,
+    ingest_file,
+    list_uploaded_files,
+    save_uploaded_file,
+)
 from net_comd_comp.ollama_client import is_ollama_available, model_installed
 from net_comd_comp.ollama_client import OllamaChat
 from net_comd_comp.ollama_lifecycle import ensure_ollama_server
 
-APP_BUILD = "2026-07-10-colleague-mappings"
+APP_BUILD = "2026-07-11-upload-docs"
 
 st.set_page_config(
     page_title="Net Command Comparator",
@@ -200,6 +205,94 @@ def main() -> None:
                 st.success(f"Added {added} embeddings.")
                 st.rerun()
 
+        st.divider()
+        st.subheader("Upload docs")
+        st.caption(
+            "Add PDF / TXT / MD files to the **retrieval index** (RAG). "
+            "Chunks are embedded with the Ollama embed model so `qwen2.5:7b` can cite them — "
+            "this does **not** fine-tune model weights."
+        )
+        upload_vendor = st.selectbox(
+            "Vendor for uploaded docs",
+            options=["cisco", "arista"],
+            format_func=lambda v: "Cisco" if v == "cisco" else "Arista",
+            help="Tag chunks so search returns them for the correct platform.",
+        )
+        uploaded_files = st.file_uploader(
+            "Choose PDF or text files",
+            type=["pdf", "txt", "md"],
+            accept_multiple_files=True,
+            help="Saved under data/sources/uploads/{vendor}/ and ingested into SQLite.",
+        )
+        embed_after_upload = st.checkbox(
+            "Embed after upload",
+            value=True,
+            help="Run the semantic index builder after ingest so new docs are searchable immediately.",
+        )
+        if st.button("Ingest uploaded files", disabled=not uploaded_files):
+            if not uploaded_files:
+                st.warning("Select at least one file.")
+            else:
+                with st.spinner("Saving and ingesting uploads…"):
+                    log_box = st.empty()
+
+                    def ulog(msg: str) -> None:
+                        log_box.caption(msg)
+
+                    total_chunks = 0
+                    saved_names: list[str] = []
+                    for uf in uploaded_files:
+                        dest = save_uploaded_file(upload_vendor, uf.name, uf.getvalue())
+                        saved_names.append(dest.name)
+                        ulog(f"Saved {dest.name}")
+                        n = ingest_file(index, dest, upload_vendor, on_progress=ulog)
+                        total_chunks += n
+                        ulog(f"{dest.name}: +{n} chunks")
+
+                st.success(
+                    f"Ingested {len(saved_names)} file(s) for **{upload_vendor}** "
+                    f"(+{total_chunks} new chunks)."
+                )
+
+                if embed_after_upload:
+                    if not online or not model_installed(embed_model, base_url):
+                        st.warning(
+                            "Files ingested, but Ollama embed model is unavailable. "
+                            "Start Ollama and click **Build semantic index**."
+                        )
+                    else:
+                        with st.spinner("Embedding new chunks…"):
+                            embedder = OllamaEmbeddings(
+                                model=embed_model,
+                                base_url=base_url,
+                                num_thread=ollama_cfg.get("num_thread"),
+                            )
+                            prog = st.progress(0, text="Embedding…")
+
+                            def on_embed(done: int, total: int) -> None:
+                                prog.progress(
+                                    done / max(total, 1),
+                                    text=f"Embedding {done}/{total}",
+                                )
+
+                            added_emb = vector_index.build(
+                                index, embedder, on_progress=on_embed
+                            )
+                            prog.empty()
+                        st.success(f"Added {added_emb} embeddings.")
+                else:
+                    st.info("Run **Build semantic index** when ready to make uploads searchable.")
+                st.rerun()
+
+        saved = list_uploaded_files(upload_vendor)
+        with st.expander(f"Uploaded files ({upload_vendor})", expanded=bool(saved)):
+            if not saved:
+                st.caption("No uploads yet for this vendor.")
+            else:
+                for path in saved:
+                    st.text(f"{path.name} ({path.stat().st_size // 1024} KB)")
+            st.caption(f"Folder: `data/sources/uploads/{upload_vendor}/`")
+
         with st.expander("Indexed sources"):
             for row in index.list_sources():
                 st.text(
@@ -334,7 +427,8 @@ def main() -> None:
                     st.markdown(f"- {entry.get('name', entry.get('url', ''))}")
         st.markdown("### Add more sources")
         st.markdown(
-            "Edit `config.yaml` — add local PDFs under `data/sources/` or new URLs "
+            "Use the sidebar **Upload docs** picker for PDF/TXT/MD files, or edit "
+            "`config.yaml` — local paths under `data/sources/` or new URLs "
             "(set `type: pdf` for remote PDFs). Re-ingest and rebuild the index."
         )
         st.info(f"Project root: `{ROOT}`")

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import BinaryIO, Callable, Dict, List, Optional, Union
 
 from net_comd_comp.config import ROOT, load_config, vendor_sources
 from net_comd_comp.ingest.chunker import chunk_text, dedupe_chunks
@@ -16,6 +17,9 @@ from net_comd_comp.index.store import CommandIndex
 
 ProgressFn = Optional[Callable[[str], None]]
 
+UPLOAD_ROOT = ROOT / "data" / "sources" / "uploads"
+UPLOAD_EXTENSIONS = {".pdf", ".txt", ".md"}
+
 
 def _log(fn: ProgressFn, msg: str) -> None:
     if fn:
@@ -25,6 +29,130 @@ def _log(fn: ProgressFn, msg: str) -> None:
 def _resolve_pdf(path_str: str) -> Path:
     p = Path(path_str)
     return p if p.is_absolute() else (ROOT / p).resolve()
+
+
+def uploads_dir(vendor: str) -> Path:
+    """Per-vendor folder for user-uploaded training docs."""
+    path = UPLOAD_ROOT / vendor.lower().strip()
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def safe_upload_name(filename: str) -> str:
+    """Basename only; strip path traversal and unsafe characters."""
+    name = Path(filename or "upload.bin").name
+    name = re.sub(r"[^\w.\- ()[\]]+", "_", name).strip("._ ")
+    return name or "upload.bin"
+
+
+def save_uploaded_file(
+    vendor: str,
+    filename: str,
+    data: Union[bytes, BinaryIO],
+) -> Path:
+    """Persist an uploaded file under data/sources/uploads/{vendor}/."""
+    dest_dir = uploads_dir(vendor)
+    safe = safe_upload_name(filename)
+    dest = dest_dir / safe
+    if hasattr(data, "read"):
+        payload = data.read()
+    else:
+        payload = data
+    if isinstance(payload, str):
+        payload = payload.encode("utf-8")
+    dest.write_bytes(payload)
+    return dest
+
+
+def list_uploaded_files(vendor: Optional[str] = None) -> List[Path]:
+    """List saved upload files for one vendor or all vendors."""
+    if vendor:
+        folder = uploads_dir(vendor)
+        if not folder.is_dir():
+            return []
+        return sorted(
+            p for p in folder.iterdir() if p.is_file() and p.suffix.lower() in UPLOAD_EXTENSIONS
+        )
+    results: List[Path] = []
+    if not UPLOAD_ROOT.is_dir():
+        return results
+    for child in sorted(UPLOAD_ROOT.iterdir()):
+        if child.is_dir():
+            results.extend(list_uploaded_files(child.name))
+    return results
+
+
+def _read_text_file(path: Path) -> str:
+    raw = path.read_bytes()
+    for encoding in ("utf-8", "utf-8-sig", "cp1252", "latin-1"):
+        try:
+            return raw.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("utf-8", errors="replace")
+
+
+def extract_file_text(path: Path) -> tuple[str, str]:
+    """Return (text, source_type) for a local pdf/txt/md file."""
+    suffix = path.suffix.lower()
+    if suffix == ".pdf":
+        return extract_pdf_text(path), "pdf"
+    if suffix in (".txt", ".md"):
+        return _read_text_file(path), "txt"
+    raise ValueError(f"Unsupported file type: {path.suffix}")
+
+
+def ingest_file(
+    index: CommandIndex,
+    path: Path | str,
+    vendor: str,
+    on_progress: ProgressFn = None,
+) -> int:
+    """Chunk a local PDF/TXT and upsert into the command index."""
+    file_path = Path(path)
+    if not file_path.is_file():
+        _log(on_progress, f"Skip missing file: {file_path}")
+        return 0
+    if file_path.suffix.lower() not in UPLOAD_EXTENSIONS:
+        _log(on_progress, f"Skip unsupported type: {file_path.name}")
+        return 0
+
+    _log(on_progress, f"Ingesting {vendor} file: {file_path.name}")
+    try:
+        text, source_type = extract_file_text(file_path)
+    except Exception as exc:
+        _log(on_progress, f"Failed to read {file_path.name}: {exc}")
+        return 0
+
+    trusted = source_type == "pdf"
+    if not is_usable_text(text, trusted_pdf=trusted):
+        _log(on_progress, f"Skipped unusable content: {file_path.name}")
+        return 0
+
+    chunks = filter_chunks(dedupe_chunks(chunk_text(text)))
+    if not chunks:
+        _log(on_progress, f"No usable chunks: {file_path.name}")
+        return 0
+
+    return index.upsert_chunks(
+        vendor=vendor,
+        source_name=file_path.stem,
+        source_type=source_type,
+        source_ref=str(file_path.resolve()),
+        chunks=chunks,
+    )
+
+
+def ingest_uploads(
+    index: CommandIndex,
+    vendor: str,
+    on_progress: ProgressFn = None,
+) -> int:
+    """Ingest all files under data/sources/uploads/{vendor}/."""
+    added = 0
+    for path in list_uploaded_files(vendor):
+        added += ingest_file(index, path, vendor, on_progress=on_progress)
+    return added
 
 
 def ingest_vendor(
@@ -47,17 +175,10 @@ def ingest_vendor(
         if not path.is_file():
             _log(on_progress, f"Skip missing PDF: {path}")
             continue
-        _log(on_progress, f"Ingesting {vendor} PDF: {path.name}")
-        text = extract_pdf_text(path)
-        chunks = filter_chunks(dedupe_chunks(chunk_text(text)))
-        n = index.upsert_chunks(
-            vendor=vendor,
-            source_name=path.stem,
-            source_type="pdf",
-            source_ref=str(path),
-            chunks=chunks,
-        )
-        added += n
+        added += ingest_file(index, path, vendor, on_progress=on_progress)
+
+    # User uploads (PDF/TXT) — always re-ingested with config sources
+    added += ingest_uploads(index, vendor, on_progress=on_progress)
 
     pdf_cache = ROOT / "data" / "sources" / "cache"
 
